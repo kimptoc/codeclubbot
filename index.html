@@ -34,9 +34,9 @@
 </head>
 <body>
     <h1>🤖 Kilo Chat</h1>
-    <p class="api-key-note">Enter your Kilo API key below (stored locally in browser).</p>
-    
-    <input type="password" id="api-key" placeholder="Enter Kilo API key" style="width:100%;padding:12px;font-size:14px;border:1px solid #ddd;border-radius:8px;margin-bottom:10px;">
+    <p class="api-key-note">Enter your Kilo API key below, or leave as "anonymous" for free models (200 req/hr limit).</p>
+
+    <input type="text" id="api-key" placeholder="Enter Kilo API key" value="anonymous" style="width:100%;padding:12px;font-size:14px;border:1px solid #ddd;border-radius:8px;margin-bottom:10px;">
     
     <div class="input-container">
         <textarea id="prompt-input" placeholder="Enter your prompt..."></textarea>
@@ -46,8 +46,6 @@
     <div id="response">Response will appear here...</div>
 
     <script type="module">
-        import { Kilo } from 'https://esm.sh/@kilocode/sdk';
-
         const promptInput = document.getElementById('prompt-input');
         const sendBtn = document.getElementById('send-btn');
         const responseDiv = document.getElementById('response');
@@ -58,10 +56,9 @@
         if (savedKey) apiKeyInput.value = savedKey;
 
         async function sendMessage() {
-            const apiKey = apiKeyInput.value.trim();
+            const apiKey = apiKeyInput.value.trim() || 'anonymous';
             const prompt = promptInput.value.trim();
-            
-            if (!apiKey) { responseDiv.textContent = 'Error: Please enter your Kilo API key'; responseDiv.className = 'error'; return; }
+
             if (!prompt) { responseDiv.textContent = 'Error: Please enter a prompt'; responseDiv.className = 'error'; return; }
 
             localStorage.setItem('kilo-api-key', apiKey);
@@ -70,13 +67,26 @@
             responseDiv.className = 'loading';
 
             try {
-                const client = new Kilo({ apiKey });
-                const response = await client.chat.completions.create({
-                    model: 'claude-sonnet-4-6',
-                    messages: [{ role: 'user', content: prompt }],
-                    stream: false
+                const res = await fetch('https://api.kilo.ai/api/gateway/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`,
+                    },
+                    body: JSON.stringify({
+                        model: 'kilo/auto-free',
+                        messages: [{ role: 'user', content: prompt }],
+                        stream: false,
+                    }),
                 });
-                responseDiv.textContent = response.choices[0]?.message?.content || 'No response';
+
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.error?.message || `HTTP ${res.status}`);
+                }
+
+                const data = await res.json();
+                responseDiv.textContent = data.choices[0]?.message?.content || 'No response';
                 responseDiv.className = '';
             } catch (error) {
                 responseDiv.textContent = 'Error: ' + (error.message || error.toString());
